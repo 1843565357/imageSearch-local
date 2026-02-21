@@ -1,0 +1,105 @@
+import sys
+import os
+import traceback
+
+# --- 1. 调试模式：捕获启动崩溃 ---
+if getattr(sys, 'frozen', False):
+    # 将所有报错信息重定向到本地文件
+    log_path = os.path.join(os.path.dirname(sys.executable), "crash_log.txt")
+    f = open(log_path, "w", encoding="utf-8")
+    sys.stdout = f
+    sys.stderr = f
+    print("Python 解释器启动成功，正在加载依赖库...")
+
+try:
+    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QLabel
+    from config import MODEL_DIR, MODEL_NAME, STYLE_PATH
+    from database import db_manager
+    from index_manager import index_manager
+    from model_manager import model_image
+    from view.search_page import SearchPage
+    from view.db_page import DBManagementPage
+    from view.settings_page import SettingsPage
+    print("所有模块加载完成。")
+except Exception:
+    traceback.print_exc() # 如果这行执行了，去文件夹里看 crash_log.txt
+    sys.exit(1)
+
+# --- 2. 资源路径函数 ---
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+# --- 3. 主界面类 ---
+class MainApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("VisionSearch Pro")
+        self.resize(1100, 800)
+
+        # 核心逻辑初始化
+        model_image.load_model(MODEL_DIR, MODEL_NAME)
+        self.db = db_manager
+        index_manager.load_from_db(self.db)
+        self.load_stylesheet(STYLE_PATH)
+
+        # UI 布局
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        layout = QHBoxLayout(main_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # 侧边栏
+        self.nav_widget = QWidget()
+        self.nav_widget.setObjectName("NavWidget")
+        self.nav_widget.setFixedWidth(200)
+        nav_layout = QVBoxLayout(self.nav_widget)
+        nav_layout.setContentsMargins(12, 40, 12, 12)
+
+        logo = QLabel("VisionSearch")
+        logo.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 30px;")
+        nav_layout.addWidget(logo)
+
+        self.btn_search = QPushButton("  🔍  图像搜索")
+        self.btn_db = QPushButton("  📂  数据管理")
+        self.btn_sets = QPushButton("  ⚙️  系统设置")
+
+        self.nav_btns = [self.btn_search, self.btn_db, self.btn_sets]
+        for btn in self.nav_btns:
+            btn.setObjectName("NavBtn")
+            nav_layout.addWidget(btn)
+
+        nav_layout.addStretch()
+        layout.addWidget(self.nav_widget)
+
+        # 页面容器
+        self.stack = QStackedWidget()
+        layout.addWidget(self.stack)
+        self.stack.addWidget(SearchPage())
+        self.stack.addWidget(DBManagementPage())
+        self.stack.addWidget(SettingsPage())
+
+        self.btn_search.clicked.connect(lambda: self.switch_page(0))
+        self.btn_db.clicked.connect(lambda: self.switch_page(1))
+        self.btn_sets.clicked.connect(lambda: self.switch_page(2))
+        self.switch_page(0)
+
+    def load_stylesheet(self, file_path):
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                self.setStyleSheet(f.read())
+
+    def switch_page(self, index):
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.nav_btns):
+            btn.setObjectName("ActiveNav" if i == index else "NavBtn")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    gui = MainApp()
+    gui.show()
+    sys.exit(app.exec_())
