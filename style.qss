@@ -1,0 +1,117 @@
+/* 全局背景与字体 */
+QMainWindow, #MainStack {
+    background-color: #ffffff;
+}
+
+/* 侧边导航栏容器 */
+#NavWidget {
+    background-color: #f2f2f7;
+    border-right: 1px solid #e5e5e5;
+}
+
+/* 导航按钮通用样式 */
+QPushButton#NavBtn {
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    text-align: left;
+    font-size: 14px;
+    color: #3c3c43;
+    background-color: transparent;
+}
+
+QPushButton#NavBtn:hover {
+    background-color: #e5e5ea;
+}
+
+/* 导航按钮选中状态 */
+QPushButton#ActiveNav {
+    background-color: #ffffff;
+    color: #007aff;
+    font-weight: bold;
+}
+
+/* 标题样式 */
+QLabel#PageTitle {
+    font-size: 24px;
+    font-weight: bold;
+    color: #1c1c1e;
+    margin-bottom: 10px;
+}
+
+/* 卡片式容器 */
+#CardFrame {
+    background-color: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+}
+
+/* 蓝色主按钮 */
+QPushButton#PrimaryBtn {
+    background-color: #007aff;
+    color: white;
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 8px 16px;
+}
+
+QPushButton#PrimaryBtn:hover {
+    background-color: #0056b3;
+}
+
+/* 输入框样式 */
+QLineEdit {
+    background-color: #f2f2f7;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 8px;
+    color: #1c1c1e;
+}
+
+QLineEdit:focus {
+    border: 1px solid #007aff;
+    background-color: #ffffff;
+}
+
+/* 表格美化 */
+QTableWidget {
+    border: none;
+    gridline-color: transparent;
+}
+
+QHeaderView::section {
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid #e5e5e5;
+    color: #8e8e93;
+    font-weight: bold;
+    padding: 10px;
+}
+/* 设置条目之间的分隔线 */
+QWidget#SettingItem {
+    border-bottom: 1px solid #f2f2f7;
+    background-color: transparent;
+}
+
+/* 最后一个条目去掉底边框 */
+QWidget#SettingItem:last-child {
+    border-bottom: none;
+}
+
+/* 调整设置页面的输入框，使其更扁平 */
+QLineEdit {
+    background-color: transparent;
+    border: none;
+    color: #007aff; /* 让输入的路径显示为蓝色，像链接一样 */
+    font-family: "Consolas", "Monaco", monospace; /* 路径使用等宽字体 */
+}
+
+QLineEdit:focus {
+    background-color: #f2f2f7;
+    border-radius: 4px;
+}
+
+/* 悬停在设置条目上时稍微变色 */
+QWidget#SettingItem:hover {
+    background-color: #fafafa;
+}
