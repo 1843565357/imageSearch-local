@@ -1,105 +1,66 @@
 import sys
 import os
-import traceback
+import logging
+from PyQt5.QtWidgets import QApplication, QSplashScreen, QMainWindow
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt, QTimer
+import config
 
-# --- 1. 调试模式：捕获启动崩溃 ---
-if getattr(sys, 'frozen', False):
-    # 将所有报错信息重定向到本地文件
-    log_path = os.path.join(os.path.dirname(sys.executable), "crash_log.txt")
-    f = open(log_path, "w", encoding="utf-8")
-    sys.stdout = f
-    sys.stderr = f
-    print("Python 解释器启动成功，正在加载依赖库...")
+# 初始化日志
+logging.basicConfig(level=logging.INFO)
 
-try:
-    from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QStackedWidget, QLabel
-    from config import MODEL_DIR, MODEL_NAME, STYLE_PATH
-    from database import db_manager
-    from index_manager import index_manager
-    from model_manager import model_image
-    from view.search_page import SearchPage
-    from view.db_page import DBManagementPage
-    from view.settings_page import SettingsPage
-    print("所有模块加载完成。")
-except Exception:
-    traceback.print_exc() # 如果这行执行了，去文件夹里看 crash_log.txt
-    sys.exit(1)
 
-# --- 2. 资源路径函数 ---
-def resource_path(relative_path):
-    if hasattr(sys, '_MEIPASS'):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+def main():
+    app = QApplication(sys.argv)
 
-# --- 3. 主界面类 ---
-class MainApp(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("VisionSearch Pro")
-        self.resize(1100, 800)
+    # 1. 立即显示闪屏 (不要等任何初始化)
+    # 建议在 assets 下放一张 splash.png 图片
+    splash_path = os.path.join(config.INTERNAL_DIR, "assets", "splash.png")
 
-        # 核心逻辑初始化
-        model_image.load_model(MODEL_DIR, MODEL_NAME)
-        self.db = db_manager
-        index_manager.load_from_db(self.db)
-        self.load_stylesheet(STYLE_PATH)
+    # 如果没图片，可以先用颜色块占位测试
+    pixmap = QPixmap(splash_path) if os.path.exists(splash_path) else QPixmap(600, 400)
+    if not os.path.exists(splash_path): pixmap.fill(Qt.lightGray)
 
-        # UI 布局
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        layout = QHBoxLayout(main_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+    splash = QSplashScreen(pixmap, Qt.WindowStaysOnTopHint)
+    splash.show()
 
-        # 侧边栏
-        self.nav_widget = QWidget()
-        self.nav_widget.setObjectName("NavWidget")
-        self.nav_widget.setFixedWidth(200)
-        nav_layout = QVBoxLayout(self.nav_widget)
-        nav_layout.setContentsMargins(12, 40, 12, 12)
+    # 在闪屏上显示文字提示
+    def update_msg(text):
+        splash.showMessage(f" {text}...", Qt.AlignBottom | Qt.AlignLeft, Qt.white)
+        app.processEvents()  # 强制让界面刷新，不卡死
 
-        logo = QLabel("VisionSearch")
-        logo.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 30px;")
-        nav_layout.addWidget(logo)
+    update_msg("正在启动 VisionSearch Pro")
 
-        self.btn_search = QPushButton("  🔍  图像搜索")
-        self.btn_db = QPushButton("  📂  数据管理")
-        self.btn_sets = QPushButton("  ⚙️  系统设置")
+    # 2. 开始执行耗时的初始化逻辑
+    try:
+        # 加载 DINOv2 模型
+        update_msg("正在加载 AI 推理模型 (DINOv2)")
+        from model_manager import model_image
+        model_image.load_model(config.MODEL_DIR, config.MODEL_NAME)
 
-        self.nav_btns = [self.btn_search, self.btn_db, self.btn_sets]
-        for btn in self.nav_btns:
-            btn.setObjectName("NavBtn")
-            nav_layout.addWidget(btn)
+        # 加载数据库与索引
+        update_msg("正在初始化向量索引 (FAISS)")
+        from database import db_manager
+        from index_manager import index_manager
+        index_manager.load_from_db(db_manager)
 
-        nav_layout.addStretch()
-        layout.addWidget(self.nav_widget)
+        # 加载主界面
+        update_msg("正在构建用户界面")
+        from main_app import MainApp  # 建议把 MainApp 类移到单独文件，或者留在下面
+        gui = MainApp()
 
-        # 页面容器
-        self.stack = QStackedWidget()
-        layout.addWidget(self.stack)
-        self.stack.addWidget(SearchPage())
-        self.stack.addWidget(DBManagementPage())
-        self.stack.addWidget(SettingsPage())
+    except Exception as e:
+        logging.error(f"启动失败: {str(e)}")
+        splash.showMessage(f"错误: {str(e)}", Qt.AlignCenter, Qt.red)
+        # 给用户留 3 秒看清楚报错再退出
+        QTimer.singleShot(3000, lambda: sys.exit(1))
+        return
 
-        self.btn_search.clicked.connect(lambda: self.switch_page(0))
-        self.btn_db.clicked.connect(lambda: self.switch_page(1))
-        self.btn_sets.clicked.connect(lambda: self.switch_page(2))
-        self.switch_page(0)
+    # 3. 初始化完成，切换窗口
+    gui.show()
+    splash.finish(gui)  # 当主窗口显示后，关闭闪屏
+    sys.exit(app.exec_())
 
-    def load_stylesheet(self, file_path):
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
-
-    def switch_page(self, index):
-        self.stack.setCurrentIndex(index)
-        for i, btn in enumerate(self.nav_btns):
-            btn.setObjectName("ActiveNav" if i == index else "NavBtn")
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    gui = MainApp()
-    gui.show()
-    sys.exit(app.exec_())
+    main()
