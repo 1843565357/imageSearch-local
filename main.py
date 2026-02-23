@@ -46,13 +46,12 @@ def main():
 
         # 加载主界面
         update_msg("正在构建用户界面")
-        from main_app import MainApp  # 建议把 MainApp 类移到单独文件，或者留在下面
+        from main_app import MainApp
         gui = MainApp()
 
     except Exception as e:
         logging.error(f"启动失败: {str(e)}")
         splash.showMessage(f"错误: {str(e)}", Qt.AlignCenter, Qt.red)
-        # 给用户留 3 秒看清楚报错再退出
         QTimer.singleShot(3000, lambda: sys.exit(1))
         return
 

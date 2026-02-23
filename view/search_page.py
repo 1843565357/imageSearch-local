@@ -1,126 +1,188 @@
 import os
-
 import numpy as np
-from PyQt5.QtGui import QPixmap, QIcon
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QFrame, QListWidget, QFileDialog, QListWidgetItem
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+                             QLabel, QFrame, QFileDialog, QScrollArea, QGridLayout)
 from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
 
+# 导入你的核心逻辑
 from database import db_manager
 from index_manager import index_manager
 from model_manager import model_image
 from util.FeatureUtils import process_feature_vector
 
 
+# --- 自定义结果卡片组件 ---
+class ResultCard(QFrame):
+    def __init__(self, image_path, score, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ResultCardFrame")
+        self.setFixedSize(180, 230)  # 紧凑型卡片尺寸
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # 图片展示区
+        self.image_label = QLabel()
+        self.image_label.setFixedHeight(180)
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.set_rounded_image(image_path)
+
+        # 相似度分值
+        self.score_label = QLabel(f"相似度: {score:.2%}")
+        self.score_label.setObjectName("CardScoreLabel")
+        self.score_label.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(self.image_label)
+        layout.addWidget(self.score_label)
+
+    def set_rounded_image(self, image_path):
+        if not os.path.exists(image_path):
+            self.image_label.setText("图片丢失")
+            return
+        pix = QPixmap(image_path)
+        target_size = QSize(180, 180)
+        scaled = pix.scaled(target_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+
+        # 仅裁剪顶部圆角
+        final = QPixmap(target_size)
+        final.fill(Qt.transparent)
+        painter = QPainter(final)
+        painter.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, 180, 180, 12, 12)
+        painter.setClipPath(path)
+        painter.drawPixmap((180 - scaled.width()) // 2, (180 - scaled.height()) // 2, scaled)
+        painter.end()
+        self.image_label.setPixmap(final)
+
+
+# --- 主搜索页面 ---
 class SearchPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(40, 40, 40, 40)
+        main_layout = QVBoxLayout(self)
+        # 调整顶部边距为 5，让标题上移
+        main_layout.setContentsMargins(30, 5, 30, 30)
+        main_layout.setSpacing(25)
+        # 设置顶部对齐
+        main_layout.setAlignment(Qt.AlignTop)
 
-        title = QLabel("图像检索")
+        # 1. 标题
+        title = QLabel("图像检索控制台")
         title.setObjectName("PageTitle")
-        layout.addWidget(title)
+        # 标题上方的额外间距，可根据需要调整
+        main_layout.addSpacing(20)
+        main_layout.addWidget(title)
 
-        # 1. 改进上传卡片
-        self.upload_card = QFrame()
-        self.upload_card.setObjectName("CardFrame")
-        self.upload_card.setFixedHeight(250)  # 稍微调高一点
+        # 2. 上传/预览区域
+        self.top_box = QWidget()
+        top_layout = QVBoxLayout(self.top_box)
+        top_layout.setContentsMargins(0, 0, 0, 0)
 
-        card_layout = QVBoxLayout(self.upload_card)
+        # 初始上传按钮 (大框)
+        self.upload_btn = QPushButton("\n\n☁️\n\n点击上传图片进行 DINOv2 检索")
+        self.upload_btn.setObjectName("UploadAreaBtn")
+        self.upload_btn.setFixedHeight(350)  # 调大框体
+        self.upload_btn.clicked.connect(self.handle_upload)
 
-        # 增加一个 QLabel 用于显示预览图
-        self.image_display = QLabel("尚未选择图片")
-        self.image_display.setAlignment(Qt.AlignCenter)
-        self.image_display.setStyleSheet("color: #8e8e93; border: none;")
-        card_layout.addWidget(self.image_display)
+        # 选中图片后的预览容器
+        self.preview_box = QWidget()
+        self.preview_box.setVisible(False)
+        preview_layout = QHBoxLayout(self.preview_box)
 
-        self.btn_upload = QPushButton("选择图片")
-        self.btn_upload.setObjectName("PrimaryBtn")
-        self.btn_upload.setFixedWidth(120)
-        card_layout.addWidget(self.btn_upload, 0, Qt.AlignCenter)
+        # 左侧预览图
+        self.preview_img = QLabel()
+        self.preview_img.setObjectName("PreviewImageLabel")
+        self.preview_img.setFixedSize(160, 160)
 
-        layout.addWidget(self.upload_card)
-        layout.addWidget(QLabel("检索结果"))
+        # 右侧信息布局
+        info_layout = QVBoxLayout()
+        info_layout.setContentsMargins(20, 0, 0, 0)  # 与图片保持一定间距
+        info_layout.setSpacing(15)  # 标签与按钮之间的垂直间距
 
-        # 2. 改进结果列表
-        self.result_list = QListWidget()
-        self.result_list.setFrameShape(QFrame.NoFrame)
-        self.result_list.setViewMode(QListWidget.IconMode)  # 图标模式
-        self.result_list.setIconSize(QSize(150, 150))  # 图片预览大小
-        self.result_list.setResizeMode(QListWidget.Adjust)  # 自动适应窗口
-        self.result_list.setSpacing(15)
-        layout.addWidget(self.result_list)
+        # --- 布局核心改动 ---
+        # 顶部弹簧：把标签往下压
+        info_layout.addStretch()
 
-        # 【关键步骤】连接信号与槽：点击按钮时弹出文件选择框
-        self.btn_upload.clicked.connect(self.handle_upload)
+        self.name_label = QLabel("文件名")
+        self.name_label.setAlignment(Qt.AlignCenter)  # 文字水平居中
+        self.name_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2C3E50;")
+        info_layout.addWidget(self.name_label)
+
+        # 3. 更换图片按钮
+        self.re_btn = QPushButton("更换图片")
+        self.re_btn.setObjectName("PrimaryBtn")  # 关联紫色 QSS 样式
+        self.re_btn.setFixedSize(140, 40)  # 设定固定大小使其更精致
+        self.re_btn.setCursor(Qt.PointingHandCursor)
+        # 将按钮在布局中水平居中对齐
+        info_layout.addWidget(self.re_btn, alignment=Qt.AlignCenter)
+
+        # 4. 底部弹簧
+        info_layout.addStretch()
+
+        preview_layout.addWidget(self.preview_img)
+        preview_layout.addLayout(info_layout)
+
+        top_layout.addWidget(self.upload_btn)
+        top_layout.addWidget(self.preview_box)
+        main_layout.addWidget(self.top_box)
+
+        # 3. 结果展示区 (网格布局)
+        self.res_title = QLabel("检索结果")
+        self.res_title.setVisible(False)
+        self.res_title.setStyleSheet("font-size: 18px; font-weight: bold;")
+        main_layout.addWidget(self.res_title)
+
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("ResultScrollArea")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setVisible(False)
+
+        self.grid_widget = QWidget()
+        self.grid_widget.setObjectName("ResultGridWidget")
+        self.grid_layout = QGridLayout(self.grid_widget)
+        self.grid_layout.setSpacing(20)
+        self.grid_layout.setContentsMargins(5, 5, 5, 5)
+        self.scroll.setWidget(self.grid_widget)
+        main_layout.addWidget(self.scroll)
 
     def handle_upload(self):
-        # 弹出系统文件选择对话框
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择图片", "", "Image Files (*.jpg *.png *.jpeg *.bmp)"
-        )
-
-        if file_path:
-            # 3. 预览逻辑
-            pixmap = QPixmap(file_path)
-            # 缩放预览图
-            scaled_pixmap = pixmap.scaled(
-                200, 150,  # 预览区域大小
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            self.image_display.setPixmap(scaled_pixmap)
-            self.image_display.setText("")  # 有图了，清空文字提示
-
-            # 4. 调用检索
-            self.start_feature_extraction(file_path)
+        path, _ = QFileDialog.getOpenFileName(self, "选择图片", "", "Images (*.jpg *.png *.jpeg)")
+        if path:
+            self.upload_btn.setVisible(False)
+            self.preview_box.setVisible(True)
+            self.name_label.setText(os.path.basename(path))
+            self.preview_img.setPixmap(QPixmap(path).scaled(160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.start_feature_extraction(path)
 
     def start_feature_extraction(self, path):
-        print(f"🚀 开始搜索相似图片: {path}")
+        raw_vec = model_image.extract_feature(path)
+        vector = process_feature_vector(raw_vec)
+        distances, ids = index_manager.search(vector, k=12)
 
-        # 1. 提取并处理特征向量
-        # 注意：如果 extract_feature 已经包含了 process_feature_vector 的逻辑，可以合二为一
-        raw_vector = model_image.extract_feature(path)
+        self.clear_grid()
+        self.res_title.setVisible(True)
+        self.scroll.setVisible(True)
 
-        # 2. 【关键修正】调用你写的处理函数进行归一化
-        # 确保搜索向量与库内向量的“量纲”一致
-        vector = process_feature_vector(raw_vector)
-
-        print(f"向量类型: {type(vector)}")
-        print(f"向量形状: {vector.shape}")  # 应该是 (768,) 或 (1, 768)
-        print(f"数据类型: {vector.dtype}")  # 应该是 float32
-        # 打印前 5 个数值，看看归一化后的量级
-        print(f"向量前5位: {vector.flatten()[:5]}")
-        # 打印向量的模长（判断是否做了 L2 归一化，归一化后应接近 1.0）
-        print(f"向量 L2 范数 (模长): {np.linalg.norm(vector):.4f}")
-
-        # 2. 调用单例 index_manager 进行向量检索 (返回前 10 个)
-        distances, ids = index_manager.search(vector, k=10)
-
-        # 3. 清空旧结果
-        self.result_list.clear()
-
-        # 4. 遍历搜索结果并展示
-        for dist, img_id in zip(distances, ids):
+        cols = 4
+        found = False
+        for i, (dist, img_id) in enumerate(zip(distances, ids)):
             if img_id == -1: continue
-
-            # 从数据库取路径
             img_path = db_manager.get_path_by_id(img_id)
+            if img_path and os.path.exists(img_path):
+                found = True
+                card = ResultCard(img_path, 1 / (1 + dist))
+                self.grid_layout.addWidget(card, i // cols, i % cols)
 
-            # --- 调试打印 ---
-            print(f"ID {img_id} 对应的数据库路径: {img_path}")
+        if found:
+            self.grid_layout.setColumnStretch(cols, 1)
+            self.grid_layout.setRowStretch((len(ids) // cols) + 1, 1)
 
-            # 统一路径格式
-            if img_path:
-                img_path = os.path.abspath(img_path).replace('/', os.sep).replace('\\', os.sep)
-
-                if os.path.exists(img_path):
-                    score = 1 / (1 + dist)
-                    item_text = f"相似度: {score:.2%}\n{os.path.basename(img_path)}"
-                    item = QListWidgetItem(QIcon(img_path), item_text)
-                    self.result_list.addItem(item)
-                else:
-                    print(f"❌ 文件不存在: {img_path}")
-
-        if self.result_list.count() == 0:
-            print("😿 未找到匹配的相似图片")
+    def clear_grid(self):
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+        for i in range(self.grid_layout.columnCount()): self.grid_layout.setColumnStretch(i, 0)
+        for i in range(self.grid_layout.rowCount()): self.grid_layout.setRowStretch(i, 0)

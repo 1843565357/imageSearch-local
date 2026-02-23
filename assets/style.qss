@@ -1,0 +1,104 @@
+/* 全局背景：保持浅灰，营造现代化质感 */
+QMainWindow, #MainStack {
+    background-color: #F7F8FA;
+}
+
+/* 侧边导航栏：宽版、左对齐文字 */
+#NavWidget {
+    background-color: #F7F8FA;
+    border-right: none;
+}
+QPushButton#NavBtn {
+    border: none;
+    border-radius: 10px;
+    padding: 0 15px;
+    text-align: left;
+    font-size: 15px;
+    color: #4A4A4A;
+    background-color: transparent;
+}
+QPushButton#NavBtn:hover {
+    background-color: #EAECEF;
+}
+QPushButton#ActiveNav {
+    background-color: #E1D3F7;
+    color: #6200EE;
+    font-weight: bold;
+    border-radius: 10px;
+    text-align: left;
+    padding: 0 15px;
+}
+
+/* 页面标题 */
+QLabel#PageTitle {
+    font-size: 26px;
+    font-weight: bold;
+    color: #2C3E50;
+}
+
+/* 顶部巨大的上传区域 (虚线框) */
+QPushButton#UploadAreaBtn {
+    background-color: #F7F8FA;
+    border: 3px dashed #D0D7DE;
+    border-radius: 20px;
+    color: #7F8C8D;
+    font-size: 18px;
+}
+QPushButton#UploadAreaBtn:hover {
+    background-color: #F0F2F5;
+    border-color: #6200EE;
+    color: #6200EE;
+}
+
+/* 预览图边框 */
+QLabel#PreviewImageLabel {
+    background-color: #FFFFFF;
+    border: 3px solid #6200EE;
+    border-radius: 15px;
+}
+
+/* 结果区滚动容器：彻底透明化，消除包裹感 */
+QScrollArea#ResultScrollArea {
+    background-color: transparent;
+    border: none;
+}
+#ResultGridWidget {
+    background-color: transparent;
+}
+
+/* 单个结果卡片：增加浅灰色边框 */
+#ResultCardFrame {
+    background-color: #FFFFFF;
+    border: 1px solid #E5E5E5;
+    border-radius: 12px;
+}
+#ResultCardFrame:hover {
+    border: 1px solid #6200EE;
+    background-color: #FDFDFD;
+}
+
+/* 卡片底部相似度文字 */
+QLabel#CardScoreLabel {
+    font-size: 15px;
+    font-weight: bold;
+    color: #6200EE;
+    padding-bottom: 8px;
+}
+
+QPushButton#PrimaryBtn {
+    background-color: #6200EE; /* 匹配截图中深紫色的主色调 */
+    color: white;
+    border: none;
+    border-radius: 8px;        /* 圆角效果 */
+    font-size: 14px;
+    font-weight: bold;
+    padding: 5px 15px;
+}
+
+QPushButton#PrimaryBtn:hover {
+    background-color: #7722FF; /* 鼠标悬停时略微变亮 */
+}
+
+QPushButton#PrimaryBtn:pressed {
+    background-color: #5100C4; /* 按下时加深颜色，提供点击反馈 */
+}

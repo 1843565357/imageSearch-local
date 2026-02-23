@@ -22,7 +22,7 @@ MODEL_DIR = os.path.join(BASE_DIR, "models")
 MODEL_NAME = "dinov2_vitb14"
 
 # 动态生成 QSS 路径
-STYLE_PATH = os.path.join(INTERNAL_DIR, "style.qss")
+STYLE_PATH = os.path.join(INTERNAL_DIR, "assets", "style.qss")
 
 # 确保文件夹存在
 for folder in [DB_FOLDER, STORAGE_DIR, MODEL_DIR]:
