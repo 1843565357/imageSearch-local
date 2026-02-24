@@ -1,9 +1,14 @@
+import logging
 import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, QComboBox,
                              QHBoxLayout, QFrame, QPushButton, QMessageBox, QFileDialog)
 from PyQt5.QtCore import Qt
-import config
 
+import config
+from util.feature_utils import process_feature_vector
+from util.file_utils import copy_directory_contents
+
+logger = logging.getLogger(__name__)
 
 class SettingsPage(QWidget):
     def __init__(self):
@@ -70,36 +75,239 @@ class SettingsPage(QWidget):
         res = QMessageBox.question(self, "确认修改路径",
                                    "确定更改模型路径吗？\n\n⚠️ 注意：请确保已手动将旧路径下的模型文件转移到新位置。")
         if res == QMessageBox.Yes:
+            # 1. 物理迁移内容
+            success, msg = copy_directory_contents(config.MODEL_DIR, new_path)
+
+            if not success:
+                QMessageBox.critical(self, "迁移失败", f"无法移动模型文件，操作已中止。\n{msg}")
+                return
+
+            # 2. 刷新配置文件与内存变量
+            # 这步执行完后，config.MODEL_DIR 就变成新路径了
             self.apply_change("model_dir", new_path)
-            # 这里可以补全：model_image.load_model(...)
+
+            try:
+                # 3. 加载模型：它会自动从更新后的 config.MODEL_DIR 读取
+                from model_manager import model_image
+                model_image.load_model(config.MODEL_DIR, config.MODEL_NAME)
+
+                # 4. 重建索引：如果需要根据新模型重新提取特征
+                from index_manager import index_manager
+                from database import db_manager
+                index_manager.load_from_db(db_manager)
+
+                QMessageBox.information(self, "成功", "模型路径已更新，文件迁移完成，引擎已重载。")
+
+            except Exception as e:
+                QMessageBox.warning(self, "部分失败", f"配置已保存，但模型加载出错，请检查文件完整性：\n{e}")
 
     def on_model_name_changed(self, model_name):
-        """处理模型规模切换"""
-        if model_name == config.MODEL_NAME: return
+        """处理模型规模切换：联动修改索引维度并重扫数据库"""
+        if model_name == config.MODEL_NAME:
+            return
 
-        res = QMessageBox.warning(self, "确认切换引擎",
-                                  f"确定切换至 {model_name}？\n\n⚠️ 风险：不同规格的模型特征不通用，可能需要重新扫描数据库。")
+        res = QMessageBox.warning(
+            self, "确认切换引擎",
+            f"确定要切换至 {model_name} 吗？\n\n"
+            "⚠️ 注意：由于特征维度不兼容，系统将自动重置索引并重新扫描所有图片。这可能需要几分钟时间。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
         if res == QMessageBox.Yes:
-            self.apply_change("model_name", model_name)
+            try:
+                # 1. 保存配置并刷新内存变量 (让 config.MODEL_NAME 变更为新模型)
+                self.apply_change("model_name", model_name)
+
+                # 2. 局部导入管理器 (确保路径和配置已刷新)
+                from model_manager import model_image
+                from index_manager import index_manager, MODEL_DIMENSIONS
+
+                # 3. 核心步骤：重新初始化 FAISS 索引维度
+                # 根据新模型获取维度 (例如: 768 -> 1024)
+                new_dim = MODEL_DIMENSIONS.get(model_name, 768)
+                index_manager.reinit_index(new_dim)
+
+                # 4. 加载新模型权重
+                model_image.load_model(config.MODEL_DIR, config.MODEL_NAME)
+
+                # 5. 触发数据库重扫与提取
+                # 此函数最后会调用 index_manager.load_from_db() 将新向量填入索引
+                self.reindex_all_images()
+
+                QMessageBox.information(self, "切换成功", f"模型已切换至 {model_name}，维度已调整为 {new_dim}。")
+
+            except Exception as e:
+                import logging
+                logging.error(f"引擎切换失败: {e}")
+                QMessageBox.critical(self, "错误", f"切换过程中出错：\n{str(e)}")
         else:
-            # 取消则将下拉框恢复显示为当前值
+            # 用户取消，将下拉框复位
             self.inputs["model_name"].setCurrentText(config.MODEL_NAME)
 
     def on_storage_dir_changed(self, new_path):
         """处理图片存储目录变更"""
-        if new_path == config.STORAGE_DIR: return
+        # 0. 提前记录旧路径，作为数据库更新的参照
+        old_path = config.STORAGE_DIR
 
-        res = QMessageBox.question(self, "确认修改", "确定更改图片存储目录？\n建议手动迁移现有图片数据。")
+        # 1. 检查是否有实际变动，避免误触
+        if new_path == old_path:
+            return
+
+        # 2. 交互确认
+        res = QMessageBox.question(
+            self, "确认更改存储目录",
+            f"确定将图片存储目录修改为：\n{new_path}\n\n系统将自动迁移物理文件并同步数据库路径记录。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
         if res == QMessageBox.Yes:
-            self.apply_change("storage_dir", new_path)
+            try:
+                # --- 步骤 1：物理移动文件 ---
+                # 局部导入工具类，确保获取最新环境
+                success, msg = copy_directory_contents(old_path, new_path)
+
+                if not success:
+                    QMessageBox.critical(self, "迁移失败", f"图片迁移过程中出错：\n{msg}")
+                    return
+
+                # --- 步骤 2：刷新数据库路径 ---
+                # 核心逻辑：在内存变量正式修改前，利用 old_path 批量替换数据库中的路径前缀
+                from database import db_manager
+                updated_count = db_manager.refresh_storage_path(old_path, new_path)
+
+                # --- 步骤 3：保存配置并刷新内存变量 ---
+                # apply_change 内部执行 config.save_config 和 config.update_vars()
+                # 此时 config.STORAGE_DIR 会正式变为 new_path
+                self.apply_change("storage_dir", new_path)
+
+                QMessageBox.information(
+                    self, "成功",
+                    f"图片存储目录已成功更新！\n\n"
+                    f"• 文件迁移：已完成\n"
+                    f"• 数据库同步：{updated_count} 条记录已更新"
+                )
+
+            except Exception as e:
+                import logging
+                logging.error(f"存储目录变更异常: {e}")
+                QMessageBox.critical(self, "错误", f"操作未能完全执行，请检查日志：\n{str(e)}")
 
     def on_db_path_changed(self, new_path):
-        """处理数据库路径变更"""
-        if new_path == config.DB_FOLDER: return
+        """处理数据库及索引文件夹变更"""
+        old_path = config.DB_FOLDER
+        if new_path == old_path:
+            return
 
-        res = QMessageBox.question(self, "确认修改", "确定更改数据库文件夹？\n需手动迁移 .db 和 .index 文件。")
+        res = QMessageBox.question(
+            self, "确认迁移数据库",
+            f"确定将数据库文件夹修改为：\n{new_path}\n\n系统将尝试自动迁移数据库文件（.db）与向量索引（.index）。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+
         if res == QMessageBox.Yes:
-            self.apply_change("db_folder", new_path)
+            try:
+                # --- 步骤 1：物理移动文件 ---
+                # 注意：搬运前请确保没有其他耗时写入操作
+                success, msg = copy_directory_contents(old_path, new_path)
+
+                if not success:
+                    QMessageBox.critical(self, "迁移失败", f"文件迁移过程中出错：\n{msg}")
+                    return
+
+                # --- 步骤 2：保存配置并刷新内存变量 ---
+                # 这步完成后，config.DB_FOLDER 将指向新路径
+                self.apply_change("db_folder", new_path)
+
+                # --- 步骤 3：刷新数据库单例与索引加载 ---
+                # 局部导入，确保拿到的是 apply_change 之后的新路径
+                from database import db_manager
+                from index_manager import index_manager
+
+                # 重新初始化数据库连接，使其指向新路径下的文件
+                # 假设你的 DatabaseManager 支持通过新路径重新初始化
+                db_manager.__init__(db_folder=new_path)
+
+                # 告诉索引管理器，从新路径加载 FAISS 索引文件
+                index_manager.load_from_db(db_manager)
+
+                QMessageBox.information(
+                    self, "成功",
+                    "数据库文件夹已成功迁移！\n新的数据库链接已建立，索引已重新加载。"
+                )
+
+            except Exception as e:
+                import logging
+                logging.error(f"数据库目录变更异常: {e}")
+                QMessageBox.critical(self, "错误", f"数据库重载失败，请重启软件：\n{str(e)}")
+
+    def reindex_all_images(self):
+        """核心逻辑：清空旧向量、提取新特征、批量入库、重载索引"""
+        from database import db_manager
+        from model_manager import model_image
+        from index_manager import index_manager
+        from util.feature_utils import process_feature_vector
+        from PyQt5.QtWidgets import QProgressDialog
+        from PyQt5.QtCore import Qt
+
+        # 1. 获取所有待处理的图片记录
+        images = db_manager.get_all_images()
+        if not images:
+            logger.info("数据库为空，无需重扫。")
+            return
+
+        # 2. 【核心防火墙】开始重扫前，先物理清空数据库所有旧向量
+        # 确保 index_manager.load_from_db 不会读到任何维度冲突的脏数据
+        db_manager.clear_all_vectors()
+
+        # 3. 初始化进度条弹窗
+        total = len(images)
+        progress = QProgressDialog(f"正在切换至 {config.MODEL_NAME} 并重扫特征...", "取消", 0, total, self)
+        progress.setWindowModality(Qt.WindowModal)  # 阻塞交互，防止重扫时乱点
+        progress.setWindowTitle("模型引擎转换中")
+        progress.setMinimumDuration(0)
+        progress.resize(400, 100)
+
+        # 4. 准备批量更新缓冲区
+        update_buffer = []
+
+        logger.info(f"开始重扫数据库：共 {total} 张图片，目标维度: {index_manager.dimension}")
+
+        for i, (img_id, img_path, _) in enumerate(images):
+            # 检查用户是否点击了“取消”
+            if progress.wasCanceled():
+                QMessageBox.warning(self, "操作中止", "模型转换未完成，部分向量可能缺失。")
+                break
+
+            try:
+                # A. 提取新特征 (当前模型已在 load_model 阶段切换完成)
+                raw_feat = model_image.extract_feature(img_path)
+
+                # B. 后期处理 (归一化、转float32等)
+                processed_feat = process_feature_vector(raw_feat)
+
+                # C. 存入缓冲区 (存二进制 blob 和对应的 ID)
+                update_buffer.append((processed_feat.tobytes(), img_id))
+
+            except Exception as e:
+                logger.error(f"处理图片失败 [ID:{img_id}]: {img_path}, 错误: {e}")
+
+            # 更新进度条文字和数值
+            progress.setLabelText(f"处理中 ({i + 1}/{total})\n当前文件: {os.path.basename(img_path)}")
+            progress.setValue(i + 1)
+
+        # 5. 【关键步】等待循环彻底结束，一次性 Commit 到数据库
+        if update_buffer:
+            try:
+                # 批量更新：这是为了确保 load_from_db 时，所有数据都已落盘
+                db_manager.update_vectors_batch(update_buffer)
+                logger.info(f"💾 数据库落盘成功，共更新 {len(update_buffer)} 条记录。")
+            except Exception as e:
+                QMessageBox.critical(self, "数据库同步失败", f"无法写入新向量数据：{str(e)}")
+                return
+
+        # 6. 【最后一步】重载 FAISS 内存索引
+        # 此时数据库中只有新维度的向量（或 NULL），load_from_db 会非常顺畅
+        index_manager.load_from_db(db_manager)
 
     def apply_change(self, key, value):
         """执行实际的保存和内存同步"""
@@ -112,7 +320,7 @@ class SettingsPage(QWidget):
                     for k, v in self.inputs.items()}
         config.save_config(new_data)
         config.update_vars()
-        print(f"配置已更新: {key} -> {value}")
+        logger.info(f"配置已更新: {key} -> {value}")
 
     # =========================================================
     # 辅助工具函数

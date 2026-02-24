@@ -2,6 +2,19 @@ import os
 import sys
 import json
 
+# 官方模型权重下载链接映射
+MODEL_URLS = {
+    "dinov2_vits14": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_pretrain.pth",
+    "dinov2_vitb14": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitb14/dinov2_vitb14_pretrain.pth",
+}
+# DINOv2 官方模型对应的特征维度映射
+MODEL_DIMENSIONS = {
+    "dinov2_vits14": 384,
+    "dinov2_vitb14": 768,
+    "dinov2_vitl14": 1024,
+    "dinov2_vitg14": 1536
+}
+
 # --- 1. 基础路径定位 (这部分保持不动) ---
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -36,7 +49,7 @@ def save_config(config_data):
         json.dump(config_data, f, indent=4, ensure_ascii=False)
 
 
-# --- 3. 核心：定义全局变量并导出 ---
+# --- 3. 定义全局变量并导出 ---
 # 这些变量名必须存在，否则其他文件会报 AttributeError
 MODEL_DIR = ""
 MODEL_NAME = ""

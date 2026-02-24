@@ -15,14 +15,7 @@ import time
 
 from index_manager import index_manager
 from model_manager import model_image
-from util.FeatureUtils import process_feature_vector
-
-
-# 模拟 DINOv2 提取特征的口子
-def extract_dinov2_features(image_path):
-    vector = model_image.extract_feature(image_path)
-    data_vector = process_feature_vector(vector)
-    return data_vector
+from util.feature_utils import process_feature_vector
 
 # 异步入库线程
 class AddDataWorker(QThread):
@@ -37,7 +30,7 @@ class AddDataWorker(QThread):
     def run(self):
         for i, old_path in enumerate(self.paths):
             try:
-                # 1. 准备新路径并拷贝文件 (同你之前的逻辑)
+                # 1. 准备新路径并拷贝文件
                 file_ext = os.path.splitext(old_path)[1].lower()
                 new_filename = f"{uuid.uuid4()}{file_ext}"
                 new_path = os.path.join(STORAGE_DIR, new_filename)
@@ -46,7 +39,6 @@ class AddDataWorker(QThread):
                 # 2. 使用单例提取特征
                 # 注意：确保这里调用的是 model_image.extract_feature
                 vector = model_image.extract_feature(new_path)
-
                 if vector is not None:
                     # 3. 存入数据库并获取该记录的自增 ID
                     # 必须拿到 ID，因为 FAISS 需要这个 ID 来对应数据库记录
@@ -189,9 +181,9 @@ class DBManagementPage(QWidget):
                 if image_path and os.path.exists(image_path):
                     try:
                         os.remove(image_path)
-                        print(f"📁 已清理物理文件: {image_path}")
+                        print(f" 已清理物理文件: {image_path}")
                     except Exception as e:
-                        print(f"❌ 物理文件删除失败: {e}")
+                        print(f" 物理文件删除失败: {e}")
 
                 # 4. 刷新 UI
                 self.refresh_table()

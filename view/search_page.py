@@ -9,7 +9,7 @@ from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
 from database import db_manager
 from index_manager import index_manager
 from model_manager import model_image
-from util.FeatureUtils import process_feature_vector
+from util.feature_utils import process_feature_vector
 
 
 # --- 自定义结果卡片组件 ---
@@ -116,6 +116,8 @@ class SearchPage(QWidget):
         self.re_btn.setObjectName("PrimaryBtn")  # 关联紫色 QSS 样式
         self.re_btn.setFixedSize(140, 40)  # 设定固定大小使其更精致
         self.re_btn.setCursor(Qt.PointingHandCursor)
+
+        self.re_btn.clicked.connect(self.handle_upload)
         # 将按钮在布局中水平居中对齐
         info_layout.addWidget(self.re_btn, alignment=Qt.AlignCenter)
 

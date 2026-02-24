@@ -8,27 +8,40 @@ QMainWindow, #MainStack {
     background-color: #F7F8FA;
     border-right: none;
 }
-QPushButton#NavBtn {
+
+/* 统一导航按钮的基础样式，确保尺寸完全一致 */
+QPushButton#NavBtn, QPushButton#ActiveNav {
     border: none;
     border-radius: 10px;
-    padding: 0 15px;
+    padding-left: 15px;  /* 固定左边距 */
+    padding-right: 15px;
     text-align: left;
     font-size: 15px;
+    height: 50px;       /* 强制固定高度，防止抖动 */
+    font-weight: normal; /* 关键：强制保持不加粗，防止文字宽度变化 */
+}
+
+/* 普通状态 */
+QPushButton#NavBtn {
     color: #4A4A4A;
     background-color: transparent;
 }
+
+/* 悬停状态 */
 QPushButton#NavBtn:hover {
     background-color: #EAECEF;
 }
+
+/* 选中激活状态 */
 QPushButton#ActiveNav {
     background-color: #E1D3F7;
     color: #6200EE;
-    font-weight: bold;
-    border-radius: 10px;
-    text-align: left;
-    padding: 0 15px;
-}
+    /* 移除 font-weight: bold; */
 
+    /* 可选：增加一个左侧紫色小条作为视觉引导，而不影响文字位置 */
+    border-left: 4px solid #6200EE;
+    padding-left: 11px; /* 15px - 4px 边框 = 11px，确保文字绝对对齐 */
+}
 /* 页面标题 */
 QLabel#PageTitle {
     font-size: 26px;

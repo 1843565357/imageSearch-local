@@ -1,7 +1,9 @@
+import logging
 import sqlite3
 import numpy as np
 import os
 
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     # 接收外部传入的文件夹和文件名
@@ -57,15 +59,19 @@ class DatabaseManager:
 
         return path_to_delete  # 返回路径，UI 层级会用到
 
-    def update_vector(self, image_id, vector):
-        """更新已有记录的特征向量 (留给 DINOv2 重新扫描时使用)"""
-        vector_blob = vector.tobytes()
+    def update_vectors_batch(self, update_list):
+        """
+        批量更新向量，使用单个事务确保速度和一致性
+        :param update_list: [(vector_blob, img_id), ...]
+        """
         with self.get_connection() as conn:
-            conn.execute(
+            # 使用 executemany 批量操作，比一条条 update 快几十倍
+            conn.executemany(
                 "UPDATE images SET vector_data = ? WHERE id = ?",
-                (vector_blob, image_id)
+                update_list
             )
-            conn.commit()
+            # Context Manager (with) 会在这里自动执行 commit()
+        logger.info(f"✅ 成功提交 {len(update_list)} 条向量更新到数据库")
 
     def get_all_images(self):
         """获取所有记录用于数据库管理页面显示"""
@@ -106,4 +112,50 @@ class DatabaseManager:
                 vectors.append(np.frombuffer(row[1], dtype='float32'))
 
             return np.array(ids), np.array(vectors)
+
+    def refresh_storage_path(self, old_root, new_root):
+        """
+        当存储目录改变时，批量更新数据库中的图片绝对路径
+        :param old_root: 旧的根目录路径 (来自 config.STORAGE_DIR 修改前)
+        :param new_root: 新的根目录路径 (来自用户输入)
+        """
+        # 1. 路径标准化，确保不同系统的斜杠一致
+        old_root = os.path.normpath(old_root)
+        new_root = os.path.normpath(new_root)
+
+        # 2. 只有路径真的变了才执行
+        if old_root == new_root:
+            return 0
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # 使用 SQLite 的 REPLACE 函数：将路径中包含的 old_root 部分替换为 new_root
+                # WHERE 子句确保我们只更新确实以旧路径开头的记录
+                sql = "UPDATE images SET image_path = REPLACE(image_path, ?, ?) WHERE image_path LIKE ?"
+
+                # LIKE 参数增加 % 通配符
+                cursor.execute(sql, (old_root, new_root, f"{old_root}%"))
+
+                count = cursor.rowcount
+                conn.commit()
+
+                logger.info(f" 数据库路径同步完成：共更新 {count} 条记录")
+                return count
+
+        except Exception as e:
+            logger.error(f" 数据库路径同步失败: {str(e)}")
+            raise e
+
+    def clear_all_vectors(self):
+        """【新增】彻底清空特征向量字段，为模型切换做准备"""
+        with self.get_connection() as conn:
+            conn.execute("UPDATE images SET vector_data = NULL")
+            conn.commit()
+        logger.info("🧹 数据库特征向量已清空")
+
 db_manager = DatabaseManager()
