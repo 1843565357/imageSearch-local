@@ -7,7 +7,7 @@ env_path = r'E:\enviroment\Anaconda_envs\envs\Image-App'
 env_bin = os.path.join(env_path, 'Library', 'bin')
 project_root = os.getcwd()
 
-datas = [('database', 'database'), ('style.qss', '.')]
+datas = [('database', 'database'), ('assets/style.qss', 'assets')]
 binaries = []
 hiddenimports = ['numpy.core._multiarray_umath']
 

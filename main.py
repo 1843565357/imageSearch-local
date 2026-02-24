@@ -6,6 +6,13 @@ from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QTimer
 import config
 
+# 如果是打包环境，将所有输出重定向到日志文件
+if getattr(sys, 'frozen', False):
+    log_path = os.path.join(config.BASE_DIR, "error_log.txt")
+    log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+    sys.stdout = log_file
+    sys.stderr = log_file
+
 # 初始化日志
 logging.basicConfig(level=logging.INFO)
 
