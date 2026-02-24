@@ -15,13 +15,13 @@
 
 ## 页面
 
-![image-20260225004719031](F:\code\Image-App\assets\image-20260225004719031.png)
+![image-20260225004719031](https://github.com/1843565357/imageSearch-local/blob/main/readme_image/image-20260225004719031.png)
 
-![image-20260225004745974](F:\code\Image-App\assets\image-20260225004745974.png)
+![image-20260225004745974](https://github.com/1843565357/imageSearch-local/blob/main/readme_image/image-20260225004745974.png)
 
-![image-20260225004754461](F:\code\Image-App\assets\image-20260225004754461.png)
+![image-20260225004754461](https://github.com/1843565357/imageSearch-local/blob/main/readme_image/image-20260225004754461.png)
 
-![image-20260225004802167](F:\code\Image-App\assets\image-20260225004802167.png)
+![image-20260225004802167](https://github.com/1843565357/imageSearch-local/blob/main/readme_image/image-20260225004802167.png)
 
 ## 快速开始
 
