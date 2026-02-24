@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                             QLabel, QFrame, QFileDialog, QScrollArea, QGridLayout)
+                             QLabel, QFrame, QFileDialog, QScrollArea, QGridLayout, QLineEdit)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QPixmap, QPainter, QPainterPath
 
@@ -16,26 +16,52 @@ from util.feature_utils import process_feature_vector
 class ResultCard(QFrame):
     def __init__(self, image_path, score, parent=None):
         super().__init__(parent)
+        self.image_path = image_path
         self.setObjectName("ResultCardFrame")
-        self.setFixedSize(180, 230)  # 紧凑型卡片尺寸
+        # 稍微增加高度以保证路径输入框不拥挤
+        self.setFixedSize(180, 270)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(5, 5, 5, 5)  # 增加内边距
         layout.setSpacing(8)
 
-        # 图片展示区
+        # 1. 图片展示区
         self.image_label = QLabel()
         self.image_label.setFixedHeight(180)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.set_rounded_image(image_path)
 
-        # 相似度分值
+        # 2. 相似度分值
         self.score_label = QLabel(f"相似度: {score:.2%}")
         self.score_label.setObjectName("CardScoreLabel")
         self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet("font-weight: bold; color: #2C3E50; font-size: 13px;")
+
+        # 3. 【核心改动】绝对路径展示框 (可点击、全选、复制)
+        self.path_edit = QLineEdit(self.image_path)
+        self.path_edit.setReadOnly(True)  # 设置为只读
+        self.path_edit.setAlignment(Qt.AlignCenter)
+        self.path_edit.setToolTip(self.image_path)  # 悬停依然显示完整路径
+
+        # 样式定制：浅色背景，小字体，圆角边框
+        self.path_edit.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #E0E0E0;
+                border-radius: 4px;
+                background-color: #F8F9FA;
+                color: #7F8C8D;
+                font-size: 10px;
+                padding: 2px 4px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #3498DB; /* 点击时高亮边框提示用户可复制 */
+            }
+        """)
 
         layout.addWidget(self.image_label)
         layout.addWidget(self.score_label)
+        layout.addWidget(self.path_edit)
+        layout.addStretch()  # 弹簧撑起底部
 
     def set_rounded_image(self, image_path):
         if not os.path.exists(image_path):

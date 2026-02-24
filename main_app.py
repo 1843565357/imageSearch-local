@@ -54,7 +54,7 @@ class MainApp(QMainWindow):
         nav_layout.addStretch()
 
         # 底部版本号
-        version_label = QLabel("v 1.2.3")
+        version_label = QLabel("v 0.0.1")
         version_label.setStyleSheet("color: #6200EE; font-weight: bold; margin-left: 10px;")
         nav_layout.addWidget(version_label)
 
