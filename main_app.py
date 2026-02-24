@@ -17,9 +17,7 @@ class MainApp(QMainWindow):
         self.resize(1100, 800)
 
         # 核心逻辑初始化
-        model_image.load_model(MODEL_DIR, MODEL_NAME)
         self.db = db_manager
-        index_manager.load_from_db(self.db)
         self.load_stylesheet(STYLE_PATH)
 
         # UI 布局

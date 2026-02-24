@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import uuid
@@ -6,9 +7,10 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QTableWidget, QTableWidgetItem, QHeaderView,
                              QMessageBox, QFileDialog, QLabel, QFrame)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QPixmap
 
 from config import DB_NAME, DB_FOLDER, STORAGE_DIR
-from database import DatabaseManager
+from database import DatabaseManager, db_manager
 import time
 
 from index_manager import index_manager
@@ -69,13 +71,14 @@ class AddDataWorker(QThread):
 class DBManagementPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.db = DatabaseManager(db_folder=DB_FOLDER, db_name=DB_NAME)  # 初始化数据库类
+        self.db = db_manager
         self.init_ui()
-        self.refresh_table()  # 启动时加载数据
+        self.refresh_table()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
+        layout.setSpacing(20)
 
         title = QLabel("数据库管理")
         title.setObjectName("PageTitle")
@@ -83,40 +86,73 @@ class DBManagementPage(QWidget):
 
         # 操作栏
         tool_bar = QHBoxLayout()
+        tool_bar.setSpacing(15)
+
         btn_add = QPushButton("新增图片入库")
         btn_add.setObjectName("PrimaryBtn")
-        btn_del = QPushButton("删除选中")
+
+        btn_batch_del = QPushButton("批量删除选中")
+        btn_batch_del.setObjectName("PrimaryBtn")
+
+        # 刷新列表按钮应用新样式
         btn_refresh = QPushButton("刷新列表")
+        btn_refresh.setObjectName("PrimaryBtn")
 
         btn_add.clicked.connect(self.add_data)
-        btn_del.clicked.connect(self.delete_data)
+        btn_batch_del.clicked.connect(self.batch_delete_data)
         btn_refresh.clicked.connect(self.refresh_table)
 
         tool_bar.addWidget(btn_add)
-        tool_bar.addWidget(btn_del)
+        tool_bar.addWidget(btn_batch_del)
         tool_bar.addWidget(btn_refresh)
         tool_bar.addStretch()
         layout.addLayout(tool_bar)
 
-        # 数据表格美化
-        self.table = QTableWidget(0, 3)
-        self.table.setObjectName("CardFrame")  # 套用之前的卡片样式
-        self.table.setHorizontalHeaderLabels(["ID", "图片路径", "入库时间"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # 表格配置：选择 | 预览 | 图片路径 | 入库时间
+        self.table = QTableWidget(0, 4)
+        self.table.setObjectName("CardFrame")
+        self.table.setHorizontalHeaderLabels(["选择", "预览", "图片路径", "入库时间"])
+
+        self.table.setColumnWidth(0, 50)
+        self.table.setColumnWidth(1, 80)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+
+        self.table.verticalHeader().setDefaultSectionSize(80)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers)  # 不允许直接双击修改
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.verticalHeader().setVisible(False)
+
+        # 【关键改动】绑定单元格点击信号，实现整行触发复选框
+        self.table.cellClicked.connect(self.on_cell_clicked)
+
         layout.addWidget(self.table)
 
     def refresh_table(self):
-        """从 SQLite 加载数据并刷新 UI"""
         self.table.setRowCount(0)
         rows = self.db.get_all_images()
         for row_data in rows:
+            db_id, img_path, created_at = row_data
             row_pos = self.table.rowCount()
             self.table.insertRow(row_pos)
-            # row_data 结构: (id, path, created_at)
-            for col, value in enumerate(row_data):
-                self.table.setItem(row_pos, col, QTableWidgetItem(str(value)))
+
+            # 复选框列
+            check_item = QTableWidgetItem()
+            check_item.setCheckState(Qt.Unchecked)
+            check_item.setData(Qt.UserRole, db_id)
+            self.table.setItem(row_pos, 0, check_item)
+
+            # 预览图列
+            preview_label = QLabel()
+            preview_label.setAlignment(Qt.AlignCenter)
+            if os.path.exists(img_path):
+                pix = QPixmap(img_path).scaled(70, 70, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                preview_label.setPixmap(pix)
+            self.table.setCellWidget(row_pos, 1, preview_label)
+
+            self.table.setItem(row_pos, 2, QTableWidgetItem(img_path))
+            self.table.setItem(row_pos, 3, QTableWidgetItem(str(created_at)))
 
     def add_data(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "选择入库图片", "", "Images (*.png *.jpg *.jpeg)")
@@ -127,7 +163,6 @@ class DBManagementPage(QWidget):
             self.worker.start()
             # 简单反馈
             self.table.setEnabled(False)
-            print(f"开始入库 {len(paths)} 张图片...")
 
     def on_add_finished(self):
         self.table.setEnabled(True)
@@ -163,3 +198,31 @@ class DBManagementPage(QWidget):
                 QMessageBox.information(self, "成功", f"ID {db_id} 已完全移除")
         else:
             QMessageBox.warning(self, "警告", "请先选择要删除的行")
+
+    def on_cell_clicked(self, row, column):
+        """点击单元格任意位置，切换第一列复选框状态"""
+        check_item = self.table.item(row, 0)
+        if check_item:
+            # 切换勾选状态
+            new_state = Qt.Unchecked if check_item.checkState() == Qt.Checked else Qt.Checked
+            check_item.setCheckState(new_state)
+
+    def batch_delete_data(self):
+        selected_ids = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item.checkState() == Qt.Checked:
+                selected_ids.append(item.data(Qt.UserRole))
+
+        if not selected_ids:
+            QMessageBox.warning(self, "警告", "请先勾选要删除的图片")
+            return
+
+        if QMessageBox.question(self, '确认', f'确定删除选中的 {len(selected_ids)} 项记录吗？') == QMessageBox.Yes:
+            for db_id in selected_ids:
+                path = self.db.delete_image(db_id)
+                index_manager.remove_single(db_id)
+                if path and os.path.exists(path):
+                    try: os.remove(path)
+                    except: pass
+            self.refresh_table()
