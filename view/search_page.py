@@ -14,72 +14,81 @@ from util.feature_utils import process_feature_vector
 
 # --- 自定义结果卡片组件 ---
 class ResultCard(QFrame):
-    def __init__(self, image_path, score, parent=None):
+    def __init__(self, image_path, score, description=None, parent=None):
         super().__init__(parent)
         self.image_path = image_path
         self.setObjectName("ResultCardFrame")
-        # 稍微增加高度以保证路径输入框不拥挤
-        self.setFixedSize(180, 270)
+        # 增加高度以容纳描述标签
+        self.setFixedSize(170, 290)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)  # 增加内边距
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignTop)
 
         # 1. 图片展示区
         self.image_label = QLabel()
-        self.image_label.setFixedHeight(180)
+        self.image_label.setFixedHeight(150)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.set_rounded_image(image_path)
 
-        # 2. 相似度分值
-        self.score_label = QLabel(f"相似度: {score:.2%}")
-        self.score_label.setObjectName("CardScoreLabel")
-        self.score_label.setAlignment(Qt.AlignCenter)
-        self.score_label.setStyleSheet("font-weight: bold; color: #2C3E50; font-size: 13px;")
-
-        # 3. 【核心改动】绝对路径展示框 (可点击、全选、复制)
-        self.path_edit = QLineEdit(self.image_path)
-        self.path_edit.setReadOnly(True)  # 设置为只读
-        self.path_edit.setAlignment(Qt.AlignCenter)
-        self.path_edit.setToolTip(self.image_path)  # 悬停依然显示完整路径
-
-        # 样式定制：浅色背景，小字体，圆角边框
-        self.path_edit.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background-color: #F8F9FA;
-                color: #7F8C8D;
+        # 2. 描述标签 (胶囊样式)
+        desc_text = description if description and description.strip() else "无描述"
+        self.desc_tag = QLabel(desc_text)
+        self.desc_tag.setAlignment(Qt.AlignCenter)
+        # 这里的样式模仿了 image_1349de.png 的蓝色药丸风格
+        self.desc_tag.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: #3498DB;
+                border: 1.5px solid #3498DB;
+                border-radius: 10px;
+                padding: 2px 10px;
                 font-size: 10px;
-                padding: 2px 4px;
-            }
-            QLineEdit:focus {
-                border: 1px solid #3498DB; /* 点击时高亮边框提示用户可复制 */
+                font-weight: bold;
             }
         """)
 
-        layout.addWidget(self.image_label)
-        layout.addWidget(self.score_label)
-        layout.addWidget(self.path_edit)
-        layout.addStretch()  # 弹簧撑起底部
+        # 3. 绝对路径展示框
+        self.path_edit = QLineEdit(self.image_path)
+        self.path_edit.setReadOnly(True)
+        self.path_edit.setAlignment(Qt.AlignCenter)
+        self.path_edit.setToolTip(self.image_path)
+        self.path_edit.setStyleSheet("border: none; background: transparent; color: #34495E; font-size: 11px;")
 
+        # 4. 相似度
+        self.score_label = QLabel(f"匹配度: {score:.2%}")
+        self.score_label.setAlignment(Qt.AlignCenter)
+        self.score_label.setStyleSheet("""
+                    color: #9B59B6;       
+                    font-size: 11px;
+                    font-weight: bold;   
+                """)
+
+        layout.addWidget(self.image_label)
+        layout.addWidget(self.desc_tag, alignment=Qt.AlignCenter) # 标签居中
+        layout.addWidget(self.path_edit)
+        layout.addWidget(self.score_label)
+        layout.addStretch()
+
+    # set_rounded_image 方法保持不变
     def set_rounded_image(self, image_path):
         if not os.path.exists(image_path):
             self.image_label.setText("图片丢失")
             return
         pix = QPixmap(image_path)
-        target_size = QSize(180, 180)
+        # 对应高度调整为 160
+        target_size = QSize(160, 160)
         scaled = pix.scaled(target_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
 
-        # 仅裁剪顶部圆角
         final = QPixmap(target_size)
         final.fill(Qt.transparent)
         painter = QPainter(final)
         painter.setRenderHint(QPainter.Antialiasing)
         path = QPainterPath()
-        path.addRoundedRect(0, 0, 180, 180, 12, 12)
+        path.addRoundedRect(0, 0, 160, 160, 8, 8)
         painter.setClipPath(path)
-        painter.drawPixmap((180 - scaled.width()) // 2, (180 - scaled.height()) // 2, scaled)
+        painter.drawPixmap((160 - scaled.width()) // 2, (160 - scaled.height()) // 2, scaled)
         painter.end()
         self.image_label.setPixmap(final)
 

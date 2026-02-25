@@ -6,43 +6,41 @@ import os
 logger = logging.getLogger(__name__)
 
 class DatabaseManager:
-    # 接收外部传入的文件夹和文件名
     def __init__(self, db_folder="database", db_name="image.db"):
         self.db_path = os.path.join(db_folder, db_name)
-
-        # 自动创建数据库文件夹（如果不存在）
         if not os.path.exists(db_folder):
             os.makedirs(db_folder)
-
         self.init_db()
 
     def get_connection(self):
         return sqlite3.connect(self.db_path)
 
     def init_db(self):
-        """初始化数据库表"""
+        """初始化数据库表：直接在建表时加入 description 字段"""
         with self.get_connection() as conn:
             conn.execute('''
                     CREATE TABLE IF NOT EXISTS images (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         image_path TEXT NOT NULL,
                         vector_data BLOB,
+                        description TEXT,  -- 【新增】文本描述字段
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 ''')
             conn.commit()
 
-    def add_image(self, image_path, vector=None):
+    def add_image(self, image_path, vector=None, description=None):
         """
-        新增记录
-        :param vector: numpy array 形式的特征向量
+        新增记录：支持传入描述文本
+        :param description: 字符串，用于描述图片内容
         """
         vector_blob = vector.tobytes() if vector is not None else None
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            # 修改 SQL 增加字段占位符
             cursor.execute(
-                "INSERT INTO images (image_path, vector_data) VALUES (?, ?)",
-                (image_path, vector_blob)
+                "INSERT INTO images (image_path, vector_data, description) VALUES (?, ?, ?)",
+                (image_path, vector_blob, description)
             )
             conn.commit()
             return cursor.lastrowid
@@ -74,10 +72,10 @@ class DatabaseManager:
         logger.info(f"✅ 成功提交 {len(update_list)} 条向量更新到数据库")
 
     def get_all_images(self):
-        """获取所有记录用于数据库管理页面显示"""
+        """获取所有记录，包含描述字段"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, image_path, created_at FROM images ORDER BY created_at DESC")
+            cursor.execute("SELECT id, image_path, description, created_at FROM images ORDER BY created_at DESC")
             return cursor.fetchall()
 
     def get_path_by_id(self, image_id):
@@ -157,5 +155,20 @@ class DatabaseManager:
             conn.execute("UPDATE images SET vector_data = NULL")
             conn.commit()
         logger.info("🧹 数据库特征向量已清空")
+
+    def update_description(self, db_id, new_desc):
+        """更新指定 ID 的图片描述"""
+        with self.get_connection() as conn:
+            conn.execute("UPDATE images SET description = ? WHERE id = ?", (new_desc, db_id))
+            conn.commit()
+
+    def get_info_by_id(self, image_id):
+        """根据 ID 获取图片的完整信息（路径和描述）"""
+        clean_id = int(image_id)
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # 显式查询这两个字段
+            cursor.execute("SELECT image_path, description FROM images WHERE id = ?", (clean_id,))
+            return cursor.fetchone()  # 返回 (path, description)
 
 db_manager = DatabaseManager()
